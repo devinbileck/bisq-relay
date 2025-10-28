@@ -33,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 import static bisq.relay.notification.metrics.PushMetrics.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class MetricsPushNotificationSenderTest {
 
