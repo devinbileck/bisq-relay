@@ -235,13 +235,15 @@ public class FcmPushNotificationSender implements PushNotificationSender {
             return null;
         }
 
+        final FcmRejectionReason rejectionReason = FcmRejectionReason.fromMessagingErrorCode(messagingErrorCode)
+                .orElse(null);
         final String errorCode = messagingErrorCode.name();
         final String errorMessage = fme.getMessage();
 
         LOG.error("Push notification rejected by FCM gateway; [{}] {}",
                 errorCode, errorMessage == null ? "" : errorMessage);
 
-        if (isBreakerRelevantFcmError(messagingErrorCode)) {
+        if (isBreakerRelevantFcmError(rejectionReason)) {
             throw new ProviderFailureException("FCM provider outage/throttle: " + errorCode, cause);
         }
 
@@ -249,24 +251,24 @@ public class FcmPushNotificationSender implements PushNotificationSender {
                 false,
                 errorCode,
                 errorMessage,
-                messagingErrorCode == MessagingErrorCode.UNREGISTERED
+                rejectionReason == FcmRejectionReason.UNREGISTERED
         );
     }
 
     /**
-     * Returns {@code true} if the FCM error should count as a provider failure (breaker-relevant).
+     * Returns {@code true} if the FCM error reason should count as a provider failure.
      * <p>
-     * <b>Breaker-relevant:</b> throttling and provider server errors should count as failures.
-     * <br />
-     * <b>Breaker-irrelevant:</b> token/payload/auth/other client rejections should NOT poison the breaker.
+     * Provider throttling/outage/server errors should affect the circuit breaker.
+     * Client/token/auth errors should not poison the breaker.
      *
-     * @param errorCode FCM messaging error code
+     * @param rejectionReason FCM rejection reason, or {@code null} for unknown/unclassified errors
      * @return {@code true} if breaker should treat as failure
      */
-    private static boolean isBreakerRelevantFcmError(@Nonnull final MessagingErrorCode errorCode) {
-        return switch (errorCode) {
+    private static boolean isBreakerRelevantFcmError(final FcmRejectionReason rejectionReason) {
+        return switch (rejectionReason) {
             case QUOTA_EXCEEDED, UNAVAILABLE, INTERNAL -> true;
-            default -> false;
+            case UNREGISTERED, INVALID_ARGUMENT, SENDER_ID_MISMATCH -> false;
+            case null -> false;
         };
     }
 

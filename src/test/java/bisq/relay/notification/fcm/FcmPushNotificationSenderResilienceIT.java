@@ -157,9 +157,11 @@ class FcmPushNotificationSenderResilienceIT {
         CircuitBreaker cb = cbRegistry.circuitBreaker(PROVIDER_ID_FCM);
         openCircuitBreaker(cb);
 
-        // Wait for the OPEN wait duration to elapse
+        // Wait for the OPEN wait duration to elapse, or until the breaker is half open
         // This assumes waitDurationInOpenState <= 3s (in test properties)
-        Awaitility.await().pollDelay(Duration.ofSeconds(3)).until(() -> true);
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .until(cb::tryAcquirePermission);
 
         // The next call should be permitted as a probe; make it succeed so the breaker can close
         givenFcmWillAccept();

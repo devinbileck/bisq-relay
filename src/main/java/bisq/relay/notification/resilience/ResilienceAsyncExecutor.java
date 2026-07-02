@@ -42,6 +42,16 @@ import java.util.function.Supplier;
  *   <li>Actual supplier (outbound call)</li>
  * </ul>
  * <p>
+ * Because the CircuitBreaker is the outermost decorator, it records one outcome per logical send operation,
+ * not one outcome per retry attempt. For example, with {@code maxAttempts=3} and
+ * {@code minimumNumberOfCalls=5}, an outage requires approximately five failed logical sends before the
+ * breaker has enough calls to evaluate/open; the individual retry attempts do not independently advance the
+ * breaker's call count.
+ * <p>
+ * Retry can still temporarily increase provider load while the breaker is CLOSED: one logical send may issue
+ * up to the configured number of attempts. This is intentionally bounded by the retry configuration, the
+ * TimeLimiter's overall timeout budget, and the CircuitBreaker, which prevents any provider invocation once OPEN.
+ * <p>
  * <b>Fallback</b> is applied after the resilience chain, so it runs for OPEN circuits, timeouts, retries exhausted,
  * and unexpected exceptions.
  */

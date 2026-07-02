@@ -27,7 +27,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -79,8 +81,8 @@ class FcmPushNotificationSenderTest {
         givenSendDataOnlyIs(true);
     }
 
-    @ParameterizedTest
-    @CsvSource({"true,true", "true,false", "false,true", "false,false"})
+    @ParameterizedTest(name = "{index} => urgent={0}; sendDataOnly={1}")
+    @MethodSource("provideUrgentAndSendDataOnly")
     void whenPushNotificationIsAcceptedByFcm_thenSuccessfulResultReturned(
             final boolean urgent, final boolean sendDataOnly)
             throws IllegalAccessException, NoSuchFieldException {
@@ -94,10 +96,19 @@ class FcmPushNotificationSenderTest {
         verifyNoMoreInteractions(firebaseMessaging);
     }
 
-    @ParameterizedTest
-    @CsvSource({"INVALID_ARGUMENT,false", "UNREGISTERED,true"})
+    private static Stream<Arguments> provideUrgentAndSendDataOnly() {
+        return Stream.of(
+                Arguments.of(true, true),
+                Arguments.of(true, false),
+                Arguments.of(false, true),
+                Arguments.of(false, false)
+        );
+    }
+
+    @ParameterizedTest(name = "{index} => rejectionReason={0}; isUnregistered={1}")
+    @MethodSource("provideRejectionAndRegistration")
     void whenPushNotificationIsRejectedByFcm_thenErrorResultReturned(
-            final String rejectionReason, final boolean isUnregistered)
+            final FcmRejectionReason rejectionReason, final boolean isUnregistered)
             throws NoSuchFieldException, IllegalAccessException {
 
         givenFcmWillRejectPushNotifications(rejectionReason);
@@ -106,6 +117,14 @@ class FcmPushNotificationSenderTest {
         thenThePushNotificationWasNotAccepted(rejectionReason, isUnregistered);
 
         verifyNoMoreInteractions(firebaseMessaging);
+    }
+
+    private static Stream<Arguments> provideRejectionAndRegistration() {
+        return Stream.of(
+                Arguments.of(FcmRejectionReason.INVALID_ARGUMENT, false),
+                Arguments.of(FcmRejectionReason.UNREGISTERED, true),
+                Arguments.of(FcmRejectionReason.SENDER_ID_MISMATCH, false)
+        );
     }
 
     @Test
@@ -130,9 +149,9 @@ class FcmPushNotificationSenderTest {
         when(firebaseMessaging.sendAsync(isA(Message.class))).thenReturn(apiFuture);
     }
 
-    private void givenFcmWillRejectPushNotifications(final String messagingErrorCode) {
+    private void givenFcmWillRejectPushNotifications(final FcmRejectionReason rejectionReason) {
         FirebaseMessagingException invalidArgumentException = mock(FirebaseMessagingException.class);
-        when(invalidArgumentException.getMessagingErrorCode()).thenReturn(MessagingErrorCode.valueOf(messagingErrorCode));
+        when(invalidArgumentException.getMessagingErrorCode()).thenReturn(rejectionReason.messagingErrorCode());
 
         SettableApiFuture<String> apiFuture = SettableApiFuture.create();
         apiFuture.setException(invalidArgumentException);
@@ -202,9 +221,12 @@ class FcmPushNotificationSenderTest {
         assertThat(pushNotificationResult.isUnregistered()).isFalse();
     }
 
-    private void thenThePushNotificationWasNotAccepted(final String expectedErrorCode, final boolean isUnregistered) {
+    private void thenThePushNotificationWasNotAccepted(
+            final FcmRejectionReason rejectionReason,
+            final boolean isUnregistered
+    ) {
         assertThat(pushNotificationResult.wasAccepted()).isFalse();
-        assertThat(pushNotificationResult.errorCode()).isEqualTo(expectedErrorCode);
+        assertThat(pushNotificationResult.errorCode()).isEqualTo(rejectionReason.messagingErrorCode().name());
         assertThat(pushNotificationResult.errorMessage()).isNull();
         assertThat(pushNotificationResult.isUnregistered()).isEqualTo(isUnregistered);
     }

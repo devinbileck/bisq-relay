@@ -236,7 +236,12 @@ public class ApnsPushNotificationSender implements PushNotificationSender {
      * @return {@code true} if the rejection reason corresponds to an invalid/unregistered token
      */
     private static boolean isUnregisteredApnsToken(final String errorCode) {
-        return "Unregistered".equals(errorCode) || "BadDeviceToken".equals(errorCode);
+        return ApnsRejectionReason.fromCode(errorCode)
+                .map(reason -> switch (reason) {
+                    case UNREGISTERED, BAD_DEVICE_TOKEN -> true;
+                    default -> false;
+                })
+                .orElse(false);
     }
 
     /**
@@ -250,10 +255,12 @@ public class ApnsPushNotificationSender implements PushNotificationSender {
      * @return {@code true} if breaker should treat as failure
      */
     private static boolean isBreakerRelevantApnsRejection(final String errorCode) {
-        return switch (errorCode) {
-            case "TooManyRequests", "ServiceUnavailable", "InternalServerError" -> true;
-            default -> false;
-        };
+        return ApnsRejectionReason.fromCode(errorCode)
+                .map(reason -> switch (reason) {
+                    case TOO_MANY_REQUESTS, SERVICE_UNAVAILABLE, INTERNAL_SERVER_ERROR -> true;
+                    default -> false;
+                })
+                .orElse(false);
     }
 
     /**
@@ -271,7 +278,7 @@ public class ApnsPushNotificationSender implements PushNotificationSender {
 
         return CompletableFuture.completedFuture(new PushNotificationResult(
                 false,
-                "ServiceUnavailable",
+                ApnsRejectionReason.SERVICE_UNAVAILABLE.code(),
                 "Push provider temporarily unavailable (APNs): " + ex.getMessage(),
                 false
         ));

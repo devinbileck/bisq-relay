@@ -26,6 +26,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static bisq.relay.notification.metrics.PushMetrics.METRIC_PUSH_SHORT_CIRCUITED_TOTAL;
 import static bisq.relay.notification.metrics.PushMetrics.TAG_PROVIDER;
 
@@ -53,6 +56,7 @@ public class CircuitBreakerObservabilityConfig {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final ObjectProvider<MeterRegistry> meterRegistryProvider;
+    private final Set<String> registeredCircuitBreakers = ConcurrentHashMap.newKeySet();
 
     public CircuitBreakerObservabilityConfig(
             final CircuitBreakerRegistry circuitBreakerRegistry,
@@ -63,15 +67,21 @@ public class CircuitBreakerObservabilityConfig {
 
     @PostConstruct
     void registerListeners() {
-        // Register already-created circuit breakers
-        circuitBreakerRegistry.getAllCircuitBreakers().forEach(this::registerFor);
-
-        // Register any circuit breakers that get created later
+        // Register any circuit breakers that get created later. This is done before
+        // scanning existing breakers to reduce the chance of missing a concurrently
+        // created breaker between getAllCircuitBreakers() and onEntryAdded(...).
         circuitBreakerRegistry.getEventPublisher()
                 .onEntryAdded(event -> registerFor(event.getAddedEntry()));
+
+        // Register already-created circuit breakers
+        circuitBreakerRegistry.getAllCircuitBreakers().forEach(this::registerFor);
     }
 
     private void registerFor(final CircuitBreaker cb) {
+        if (!registeredCircuitBreakers.add(cb.getName())) {
+            return;
+        }
+
         cb.getEventPublisher()
                 .onStateTransition(event ->
                         LOG.warn("CircuitBreaker state transition: provider={} {} -> {}",
@@ -79,7 +89,7 @@ public class CircuitBreakerObservabilityConfig {
                                 event.getStateTransition().getFromState(),
                                 event.getStateTransition().getToState())
                 )
-                .onCallNotPermitted(event -> {
+                .onCallNotPermitted(_ -> {
                     LOG.warn("CircuitBreaker short-circuited call: provider={} state={}",
                             cb.getName(),
                             cb.getState());
