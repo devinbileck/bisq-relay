@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,7 +63,10 @@ public class RelayController {
         this.fcmPushNotificationController = fcmPushNotificationController;
     }
 
-    @GetMapping(value = "/relay")
+    @GetMapping(
+            value = "/relay",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
     public CompletableFuture<String> relayNotification(
             @RequestParam("isAndroid") final Optional<Boolean> isAndroid,
             @RequestParam("token") final Optional<String> deviceTokenHex,
@@ -108,11 +112,11 @@ public class RelayController {
 
     /**
      * Extracts the device token, handling both Bisq v1 and Bisq2 formats.
-     *
+     * <p>
      * Bisq v1 hex-encodes all parameters (including the token) before sending.
      * Bisq2 sends the device token as-is (a hex string for APNs, or an opaque
      * string for FCM).
-     *
+     * <p>
      * To distinguish: we try hex-decoding the input. If the result is entirely
      * printable ASCII, it was hex-encoded (Bisq v1) and we return the decoded
      * value. If hex-decoding fails or produces non-printable bytes, the input
